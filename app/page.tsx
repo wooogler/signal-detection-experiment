@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
+import useLocalStorageState from 'use-local-storage-state';
 import LineSegment from '@/components/LineSegment';
 import { TrialData, ExperimentResult, ExperimentState } from '@/types/experiment';
 
@@ -14,10 +15,19 @@ export default function Home() {
   const [isLinesVisible, setIsLinesVisible] = useState<boolean>(true);
   const [isPracticeMode, setIsPracticeMode] = useState<boolean>(false);
   const [practiceTrials, setPracticeTrials] = useState<TrialData[]>([]);
-  const [pixelsPerInch, setPixelsPerInch] = useState<number>(96);
-  const [cardWidthInPixels, setCardWidthInPixels] = useState<number>(300);
+  const [isMounted, setIsMounted] = useState(false);
+  const [pixelsPerInch, setPixelsPerInch] = useLocalStorageState<number>('pixelsPerInch', {
+    defaultValue: 96
+  });
+  const [cardWidthInPixels, setCardWidthInPixels] = useLocalStorageState<number>('cardWidthInPixels', {
+    defaultValue: 550
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exposureDuration = 3000;
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -235,6 +245,19 @@ export default function Home() {
         {experimentState === 'setup' && (
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h2 className="text-2xl font-bold mb-4">Setup</h2>
+
+            <div className="mb-6 bg-blue-50 border-2 border-blue-400 rounded p-4">
+              <p className="text-lg font-bold text-blue-900 mb-3">
+                📋 Experiment Information:
+              </p>
+              <ul className="list-disc list-inside text-base text-blue-900 space-y-2">
+                <li><strong>Practice:</strong> 4 trials (2 same, 2 different)</li>
+                <li><strong>Main Experiment:</strong> All trials from uploaded CSV</li>
+                <li><strong>Display Time:</strong> Lines shown for 3 seconds, then hidden</li>
+                <li>You can respond even after lines disappear</li>
+              </ul>
+            </div>
+
             <div className="mb-6">
               <label className="block text-base font-bold mb-2">
                 Upload CSV file with trial data:
@@ -253,16 +276,17 @@ export default function Home() {
               </div>
             )}
 
-            <div className="mb-6 border-t pt-6">
-              <h3 className="text-xl font-bold mb-3">Screen Calibration</h3>
-              <p className="text-base font-bold mb-4">
-                Adjust the slider, then place your credit card at the top-left corner of the box to match:
-              </p>
+            {isMounted && (
+              <div className="mb-6 border-t pt-6">
+                <h3 className="text-xl font-bold mb-3">Screen Calibration</h3>
+                <p className="text-base font-bold mb-4">
+                  Adjust the slider, then place your credit card at the top-left corner of the box to match:
+                </p>
 
-              <div className="mb-6">
-                <label className="block text-base font-bold mb-2">
-                  Adjust Size: {cardWidthInPixels} pixels (≈ {(cardWidthInPixels / pixelsPerInch).toFixed(2)} inches)
-                </label>
+                <div className="mb-6">
+                  <label className="block text-base font-bold mb-2">
+                    Adjust Size: {cardWidthInPixels} pixels (≈ {(cardWidthInPixels / pixelsPerInch).toFixed(2)} inches)
+                  </label>
                 <input
                   type="range"
                   min="200"
@@ -294,19 +318,20 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="bg-yellow-50 border-2 border-yellow-400 rounded p-3 mb-4">
-                <p className="text-sm font-bold text-yellow-900">
+              <div className="bg-yellow-50 border-2 border-yellow-400 rounded p-4 mb-4">
+                <p className="text-lg font-bold text-yellow-900">
                   📏 Instructions:
                 </p>
-                <ul className="list-disc list-inside text-xs text-yellow-900 mt-1 space-y-1">
+                <ul className="list-disc list-inside text-base text-yellow-900 mt-3 space-y-2">
                   <li>Use the slider above to adjust the box size</li>
                   <li>Place your credit card at the top-left corner of the blue box</li>
                   <li>Adjust until both width and height match your card exactly</li>
                 </ul>
               </div>
-            </div>
+              </div>
+            )}
 
-            <div className="space-x-4">
+            <div className="flex items-center gap-4">
               <button
                 onClick={() => {
                   if (trials.length === 0) {
@@ -321,20 +346,11 @@ export default function Home() {
               >
                 Start Practice
               </button>
-              <button
-                onClick={() => {
-                  if (trials.length === 0) {
-                    alert('Please upload a CSV file first');
-                    return;
-                  }
-                  setIsPracticeMode(false);
-                  startExperimentAfterCalibration();
-                }}
-                disabled={trials.length === 0}
-                className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-bold text-lg"
-              >
-                Start Experiment
-              </button>
+              {trials.length === 0 && (
+                <p className="text-red-600 font-bold text-base">
+                  ⬆️ Please upload a CSV file first
+                </p>
+              )}
             </div>
           </div>
         )}
