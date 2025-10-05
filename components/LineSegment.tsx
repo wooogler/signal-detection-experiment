@@ -1,6 +1,7 @@
 interface LineSegmentProps {
   length: number; // length in inches
-  tilt: number; // tilt in degrees
+  tilt?: number; // tilt in degrees
+  saturation?: number; // saturation 0-100
   centerX: number;
   centerY: number;
   color?: string;
@@ -8,7 +9,8 @@ interface LineSegmentProps {
 
 export default function LineSegment({
   length,
-  tilt,
+  tilt = 0,
+  saturation,
   centerX,
   centerY,
   color = "black"
@@ -24,13 +26,18 @@ export default function LineSegment({
   const x2 = centerX + halfLength * Math.cos(radians);
   const y2 = centerY - halfLength * Math.sin(radians);
 
+  let strokeColor = color;
+  if (saturation !== undefined) {
+    strokeColor = `hsl(0, ${saturation}%, 50%)`;
+  }
+
   return (
     <line
       x1={x1}
       y1={y1}
       x2={x2}
       y2={y2}
-      stroke={color}
+      stroke={strokeColor}
       strokeWidth={0.1 * pixelsPerInch}
     />
   );

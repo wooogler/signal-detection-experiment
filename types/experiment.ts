@@ -1,19 +1,23 @@
 export interface TrialData {
   line1Length: number;
-  line1Tilt: number;
+  line1Tilt?: number;
+  line1Saturation?: number;
   line2Length: number;
-  line2Tilt: number;
+  line2Tilt?: number;
+  line2Saturation?: number;
 }
 
 export interface ExperimentResult {
   trialIndex: number;
   line1Length: number;
-  line1Tilt: number;
+  line1Tilt?: number;
+  line1Saturation?: number;
   line2Length: number;
-  line2Tilt: number;
+  line2Tilt?: number;
+  line2Saturation?: number;
   response: 'same' | 'different';
   responseTime: number;
   timestamp: string;
 }
 
-export type ExperimentState = 'setup' | 'running' | 'completed';
+export type ExperimentState = 'setup' | 'running' | 'practice-completed' | 'completed';
