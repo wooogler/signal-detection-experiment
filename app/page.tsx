@@ -364,14 +364,14 @@ export default function Home() {
             </div>
 
             <div className="mb-6 w-full overflow-hidden">
-              <svg width="100%" height="500" viewBox="0 0 800 500" className="border" preserveAspectRatio="xMidYMid meet">
+              <svg width="100%" height="500" viewBox="0 0 1200 500" className="border" preserveAspectRatio="xMidYMid meet">
                 {isLinesVisible && (
                   <>
                     <LineSegment
                       length={currentTrial.line1Length}
                       tilt={currentTrial.line1Tilt}
                       saturation={currentTrial.line1Saturation}
-                      centerX={200}
+                      centerX={300}
                       centerY={250}
                       pixelsPerInch={pixelsPerInch}
                     />
@@ -379,7 +379,7 @@ export default function Home() {
                       length={currentTrial.line2Length}
                       tilt={currentTrial.line2Tilt}
                       saturation={currentTrial.line2Saturation}
-                      centerX={600}
+                      centerX={900}
                       centerY={250}
                       pixelsPerInch={pixelsPerInch}
                     />
