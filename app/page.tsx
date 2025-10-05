@@ -14,6 +14,8 @@ export default function Home() {
   const [isLinesVisible, setIsLinesVisible] = useState<boolean>(true);
   const [isPracticeMode, setIsPracticeMode] = useState<boolean>(false);
   const [practiceTrials, setPracticeTrials] = useState<TrialData[]>([]);
+  const [pixelsPerInch, setPixelsPerInch] = useState<number>(96);
+  const [cardWidthInPixels, setCardWidthInPixels] = useState<number>(300);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exposureDuration = 3000;
 
@@ -47,12 +49,7 @@ export default function Home() {
     reader.readAsText(file);
   };
 
-  const startPractice = () => {
-    if (trials.length === 0) {
-      alert('Please upload a CSV file first');
-      return;
-    }
-
+  const startPracticeAfterCalibration = () => {
     // Find same and different trials
     const sameTrials = trials.filter(t => t.line1Length === t.line2Length);
     const differentTrials = trials.filter(t => t.line1Length !== t.line2Length);
@@ -77,7 +74,6 @@ export default function Home() {
     const practice = [...selectedSame, ...selectedDifferent].sort(() => Math.random() - 0.5);
 
     setPracticeTrials(practice);
-    setIsPracticeMode(true);
     setExperimentState('running');
     setCurrentTrialIndex(0);
     setResults([]);
@@ -85,12 +81,7 @@ export default function Home() {
     setTrialStartTime(Date.now());
   };
 
-  const startExperiment = () => {
-    if (trials.length === 0) {
-      alert('Please upload a CSV file first');
-      return;
-    }
-    setIsPracticeMode(false);
+  const startExperimentAfterCalibration = () => {
     setExperimentState('running');
     setCurrentTrialIndex(0);
     setResults([]);
@@ -244,7 +235,7 @@ export default function Home() {
         {experimentState === 'setup' && (
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h2 className="text-2xl font-bold mb-4">Setup</h2>
-            <div className="mb-4">
+            <div className="mb-6">
               <label className="block text-base font-bold mb-2">
                 Upload CSV file with trial data:
               </label>
@@ -261,16 +252,84 @@ export default function Home() {
                 <p className="text-green-600 font-bold text-lg">✓ Loaded {trials.length} trials</p>
               </div>
             )}
+
+            <div className="mb-6 border-t pt-6">
+              <h3 className="text-xl font-bold mb-3">Screen Calibration</h3>
+              <p className="text-base font-bold mb-4">
+                Adjust the slider, then place your credit card at the top-left corner of the box to match:
+              </p>
+
+              <div className="mb-6">
+                <label className="block text-base font-bold mb-2">
+                  Adjust Size: {cardWidthInPixels} pixels (≈ {(cardWidthInPixels / pixelsPerInch).toFixed(2)} inches)
+                </label>
+                <input
+                  type="range"
+                  min="200"
+                  max="600"
+                  value={cardWidthInPixels}
+                  onChange={(e) => {
+                    const width = Number(e.target.value);
+                    setCardWidthInPixels(width);
+                    // Real-time PPI update
+                    const cardWidthInInches = 3.370;
+                    setPixelsPerInch(width / cardWidthInInches);
+                  }}
+                  className="w-full h-3 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+
+              <div className="mb-4">
+                <div
+                  className="bg-blue-100 border-4 border-blue-600 inline-block"
+                  style={{
+                    width: `${cardWidthInPixels}px`,
+                    height: `${cardWidthInPixels * 0.6308}px`, // Credit card aspect ratio: 53.98/85.6 = 0.6308
+                  }}
+                >
+                  <div className="p-2">
+                    <p className="text-sm font-bold text-blue-800">Credit Card Size</p>
+                    <p className="text-xs text-blue-700 mt-1">85.6mm × 53.98mm</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border-2 border-yellow-400 rounded p-3 mb-4">
+                <p className="text-sm font-bold text-yellow-900">
+                  📏 Instructions:
+                </p>
+                <ul className="list-disc list-inside text-xs text-yellow-900 mt-1 space-y-1">
+                  <li>Use the slider above to adjust the box size</li>
+                  <li>Place your credit card at the top-left corner of the blue box</li>
+                  <li>Adjust until both width and height match your card exactly</li>
+                </ul>
+              </div>
+            </div>
+
             <div className="space-x-4">
               <button
-                onClick={startPractice}
+                onClick={() => {
+                  if (trials.length === 0) {
+                    alert('Please upload a CSV file first');
+                    return;
+                  }
+                  setIsPracticeMode(true);
+                  startPracticeAfterCalibration();
+                }}
                 disabled={trials.length === 0}
                 className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-bold text-lg"
               >
                 Start Practice
               </button>
               <button
-                onClick={startExperiment}
+                onClick={() => {
+                  if (trials.length === 0) {
+                    alert('Please upload a CSV file first');
+                    return;
+                  }
+                  setIsPracticeMode(false);
+                  startExperimentAfterCalibration();
+                }}
                 disabled={trials.length === 0}
                 className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-bold text-lg"
               >
@@ -288,8 +347,8 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="mb-6">
-              <svg width="800" height="400" className="mx-auto border">
+            <div className="mb-6 w-full overflow-hidden">
+              <svg width="100%" height="500" viewBox="0 0 800 500" className="border" preserveAspectRatio="xMidYMid meet">
                 {isLinesVisible && (
                   <>
                     <LineSegment
@@ -297,14 +356,16 @@ export default function Home() {
                       tilt={currentTrial.line1Tilt}
                       saturation={currentTrial.line1Saturation}
                       centerX={200}
-                      centerY={200}
+                      centerY={250}
+                      pixelsPerInch={pixelsPerInch}
                     />
                     <LineSegment
                       length={currentTrial.line2Length}
                       tilt={currentTrial.line2Tilt}
                       saturation={currentTrial.line2Saturation}
                       centerX={600}
-                      centerY={200}
+                      centerY={250}
+                      pixelsPerInch={pixelsPerInch}
                     />
                   </>
                 )}
@@ -388,7 +449,14 @@ export default function Home() {
 
             <div className="text-center space-x-4">
               <button
-                onClick={startExperiment}
+                onClick={() => {
+                  if (trials.length === 0) {
+                    alert('Please upload a CSV file first');
+                    return;
+                  }
+                  setIsPracticeMode(false);
+                  startExperimentAfterCalibration();
+                }}
                 className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 text-xl font-bold"
               >
                 Start Main Experiment

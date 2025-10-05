@@ -5,6 +5,7 @@ interface LineSegmentProps {
   centerX: number;
   centerY: number;
   color?: string;
+  pixelsPerInch?: number; // calibrated PPI
 }
 
 export default function LineSegment({
@@ -13,9 +14,9 @@ export default function LineSegment({
   saturation,
   centerX,
   centerY,
-  color = "black"
+  color = "black",
+  pixelsPerInch = 96
 }: LineSegmentProps) {
-  const pixelsPerInch = 96; // Standard web pixels per inch
   const lengthInPixels = length * pixelsPerInch;
 
   const radians = (tilt * Math.PI) / 180;
