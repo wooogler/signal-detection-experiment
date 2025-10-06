@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
 import useLocalStorageState from 'use-local-storage-state';
 import JSZip from 'jszip';
@@ -25,9 +25,6 @@ export default function Home() {
   const [practiceTrials, setPracticeTrials] = useState<TrialData[]>([]);
   const [isMounted, setIsMounted] = useState(false);
   const [showSeriesTransition, setShowSeriesTransition] = useState(false);
-  const [isCalibrated, setIsCalibrated] = useLocalStorageState<boolean>('isCalibrated', {
-    defaultValue: false
-  });
   const [pixelsPerInch, setPixelsPerInch] = useLocalStorageState<number>('pixelsPerInch', {
     defaultValue: 96
   });
@@ -444,7 +441,6 @@ export default function Home() {
                     alert('Loading series data...');
                     return;
                   }
-                  setIsCalibrated(true);
                   setCurrentSeriesIndex(0);
                   startPracticeForCurrentSeries();
                 }}
@@ -523,7 +519,7 @@ export default function Home() {
 
             <div className="mb-6 bg-blue-50 border-2 border-blue-400 rounded p-4">
               <p className="text-lg font-bold text-blue-900 mb-2">
-                📝 What's Next
+                📝 What&apos;s Next
               </p>
               <p className="text-base text-blue-900">
                 You will now start <strong>{currentSeries?.name}</strong>.
@@ -621,15 +617,15 @@ export default function Home() {
                   🎨 Important: New Type of Experiment!
                 </p>
                 <p className="text-base text-purple-900 mb-3">
-                  You have completed the tilt-based experiments. Now you'll start a <strong>different type of experiment</strong>.
+                  You have completed the tilt-based experiments. Now you&apos;ll start a <strong>different type of experiment</strong>.
                 </p>
                 <p className="text-base text-purple-900 mb-2">
-                  <strong>What's changing:</strong>
+                  <strong>What&apos;s changing:</strong>
                 </p>
                 <ul className="list-disc list-inside text-base text-purple-900 space-y-1 ml-4">
                   <li>Lines will be <strong>horizontal (no tilt)</strong></li>
                   <li>Lines will be <strong>red with varying saturations</strong></li>
-                  <li>You'll still compare line lengths the same way</li>
+                  <li>You&apos;ll still compare line lengths the same way</li>
                 </ul>
                 <p className="text-base text-purple-900 mt-3">
                   You will start with a <strong>practice session (4 trials)</strong> to get familiar with this new format.
