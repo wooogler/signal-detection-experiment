@@ -3,68 +3,148 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useReactTable, getCoreRowModel, flexRender, createColumnHelper } from '@tanstack/react-table';
 import useLocalStorageState from 'use-local-storage-state';
+import JSZip from 'jszip';
 import LineSegment from '@/components/LineSegment';
 import { TrialData, ExperimentResult, ExperimentState } from '@/types/experiment';
 
+type SeriesData = {
+  name: string;
+  trials: TrialData[];
+};
+
 export default function Home() {
   const [experimentState, setExperimentState] = useState<ExperimentState>('setup');
-  const [trials, setTrials] = useState<TrialData[]>([]);
+  const [allSeries, setAllSeries] = useState<SeriesData[]>([]);
+  const [currentSeriesIndex, setCurrentSeriesIndex] = useState(0);
   const [currentTrialIndex, setCurrentTrialIndex] = useState(0);
   const [results, setResults] = useState<ExperimentResult[]>([]);
+  const [allSeriesResults, setAllSeriesResults] = useState<{ [seriesName: string]: ExperimentResult[] }>({});
   const [trialStartTime, setTrialStartTime] = useState<number>(0);
   const [isLinesVisible, setIsLinesVisible] = useState<boolean>(true);
   const [isPracticeMode, setIsPracticeMode] = useState<boolean>(false);
   const [practiceTrials, setPracticeTrials] = useState<TrialData[]>([]);
   const [isMounted, setIsMounted] = useState(false);
+  const [showSeriesTransition, setShowSeriesTransition] = useState(false);
+  const [isCalibrated, setIsCalibrated] = useLocalStorageState<boolean>('isCalibrated', {
+    defaultValue: false
+  });
   const [pixelsPerInch, setPixelsPerInch] = useLocalStorageState<number>('pixelsPerInch', {
     defaultValue: 96
   });
   const [cardWidthInPixels, setCardWidthInPixels] = useLocalStorageState<number>('cardWidthInPixels', {
     defaultValue: 550
   });
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const exposureDuration = 3000;
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  // Load all series data from CSV files
+  useEffect(() => {
+    const loadAllSeries = async () => {
+      const seriesFiles = ['Series-1a', 'Series-1b', 'Series-2a', 'Series-2b'];
+      const loadedSeries: SeriesData[] = [];
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const csv = e.target?.result as string;
-      const lines = csv.split('\n').filter(line => line.trim());
-      const header = lines[0].toLowerCase();
+      for (const fileName of seriesFiles) {
+        try {
+          const response = await fetch(`/data/${fileName}.csv`);
+          const csvText = await response.text();
+          const lines = csvText.split('\n').filter(line => line.trim());
+          const header = lines[0].toLowerCase();
 
-      const isTiltMode = header.includes('tilt');
-      const isSaturationMode = header.includes('saturation');
+          const isTiltMode = header.includes('tilt');
+          const isSaturationMode = header.includes('saturation');
 
-      const trialData: TrialData[] = lines.slice(1).map(line => {
-        const values = line.split(',').map(Number);
-        if (isTiltMode) {
-          const [line1Length, line1Tilt, line2Length, line2Tilt] = values;
-          return { line1Length, line1Tilt, line2Length, line2Tilt };
-        } else if (isSaturationMode) {
-          const [line1Length, line1Saturation, line2Length, line2Saturation] = values;
-          return { line1Length, line1Saturation, line2Length, line2Saturation };
+          const trials: TrialData[] = lines.slice(1).map(line => {
+            const values = line.split(',').map(Number);
+            if (isTiltMode) {
+              const [line1Length, line1Tilt, line2Length, line2Tilt] = values;
+              return { line1Length, line1Tilt, line2Length, line2Tilt };
+            } else if (isSaturationMode) {
+              const [line1Length, line1Saturation, line2Length, line2Saturation] = values;
+              return { line1Length, line1Saturation, line2Length, line2Saturation };
+            }
+            return { line1Length: values[0], line2Length: values[2] };
+          });
+
+          loadedSeries.push({ name: fileName, trials });
+        } catch (error) {
+          console.error(`Failed to load ${fileName}:`, error);
         }
-        return { line1Length: values[0], line2Length: values[2] };
-      });
+      }
 
-      setTrials(trialData);
+      setAllSeries(loadedSeries);
     };
-    reader.readAsText(file);
-  };
 
-  const startPracticeAfterCalibration = () => {
+    loadAllSeries();
+  }, []);
+
+  const [shouldStartNextSeries, setShouldStartNextSeries] = useState(false);
+
+  useEffect(() => {
+    if (shouldStartNextSeries && currentSeriesIndex < allSeries.length) {
+      setShouldStartNextSeries(false);
+
+      // Do practice for Series-1a (index 0) and Series-2a (index 2)
+      // Series-1b (index 1) and Series-2b (index 3) skip practice
+      if (currentSeriesIndex === 0 || currentSeriesIndex === 2) {
+        const currentSeries = allSeries[currentSeriesIndex];
+        const trials = currentSeries.trials;
+
+        // Find same and different trials
+        const sameTrials = trials.filter((t: TrialData) => t.line1Length === t.line2Length);
+        const differentTrials = trials.filter((t: TrialData) => t.line1Length !== t.line2Length);
+
+        // Randomly select 2 from each category
+        const selectedSame: TrialData[] = [];
+        if (sameTrials.length >= 2) {
+          const shuffled = [...sameTrials].sort(() => Math.random() - 0.5);
+          selectedSame.push(...shuffled.slice(0, 2));
+        } else {
+          selectedSame.push(...sameTrials.slice(0, 2));
+        }
+
+        const selectedDifferent: TrialData[] = [];
+        if (differentTrials.length >= 2) {
+          const shuffled = [...differentTrials].sort(() => Math.random() - 0.5);
+          selectedDifferent.push(...shuffled.slice(0, 2));
+        } else {
+          selectedDifferent.push(...differentTrials.slice(0, 2));
+        }
+
+        const practice = [...selectedSame, ...selectedDifferent].sort(() => Math.random() - 0.5);
+
+        setPracticeTrials(practice);
+        setIsPracticeMode(true);
+        setExperimentState('running');
+        setCurrentTrialIndex(0);
+        setResults([]);
+        setIsLinesVisible(true);
+        setTrialStartTime(Date.now());
+      } else {
+        // For Series-1b and Series-2b, skip practice and start directly
+        setIsPracticeMode(false);
+        setExperimentState('running');
+        setCurrentTrialIndex(0);
+        setResults([]);
+        setIsLinesVisible(true);
+        setTrialStartTime(Date.now());
+      }
+    }
+  }, [currentSeriesIndex, shouldStartNextSeries, allSeries]);
+
+  const startPracticeForCurrentSeries = () => {
+    if (allSeries.length === 0 || currentSeriesIndex >= allSeries.length) return;
+
+    const currentSeries = allSeries[currentSeriesIndex];
+    const trials = currentSeries.trials;
+
     // Find same and different trials
     const sameTrials = trials.filter(t => t.line1Length === t.line2Length);
     const differentTrials = trials.filter(t => t.line1Length !== t.line2Length);
 
-    // Randomly select 2 from each category without duplication
+    // Randomly select 2 from each category
     const selectedSame: TrialData[] = [];
     if (sameTrials.length >= 2) {
       const shuffled = [...sameTrials].sort(() => Math.random() - 0.5);
@@ -84,6 +164,7 @@ export default function Home() {
     const practice = [...selectedSame, ...selectedDifferent].sort(() => Math.random() - 0.5);
 
     setPracticeTrials(practice);
+    setIsPracticeMode(true);
     setExperimentState('running');
     setCurrentTrialIndex(0);
     setResults([]);
@@ -91,7 +172,10 @@ export default function Home() {
     setTrialStartTime(Date.now());
   };
 
-  const startExperimentAfterCalibration = () => {
+  const startExperimentForCurrentSeries = () => {
+    if (allSeries.length === 0 || currentSeriesIndex >= allSeries.length) return;
+
+    setIsPracticeMode(false);
     setExperimentState('running');
     setCurrentTrialIndex(0);
     setResults([]);
@@ -110,8 +194,11 @@ export default function Home() {
 
   const handleResponse = (response: 'same' | 'different') => {
     const responseTime = Date.now() - trialStartTime;
-    const currentTrials = isPracticeMode ? practiceTrials : trials;
+    const currentSeries = allSeries[currentSeriesIndex];
+    const currentTrials = isPracticeMode ? practiceTrials : (currentSeries?.trials || []);
     const currentTrial = currentTrials[currentTrialIndex];
+
+    if (!currentTrial) return;
 
     const result: ExperimentResult = {
       trialIndex: currentTrialIndex + 1,
@@ -137,53 +224,74 @@ export default function Home() {
       if (isPracticeMode) {
         setExperimentState('practice-completed');
       } else {
-        setExperimentState('completed');
+        // Save results for this series
+        setAllSeriesResults(prev => ({
+          ...prev,
+          [currentSeries.name]: newResults
+        }));
+
+        // Check if there are more series
+        if (currentSeriesIndex < allSeries.length - 1) {
+          // Show transition screen before moving to next series
+          setShowSeriesTransition(true);
+          setExperimentState('series-completed');
+        } else {
+          setExperimentState('completed');
+        }
       }
     }
   };
 
-  const downloadResults = () => {
-    const isTiltMode = results[0]?.line1Tilt !== undefined;
-    const isSaturationMode = results[0]?.line1Saturation !== undefined;
+  const downloadAllResults = async () => {
+    const zip = new JSZip();
 
-    let header: string;
-    let rows: string[];
+    // Add all series results to the zip file
+    Object.entries(allSeriesResults).forEach(([seriesName, seriesResults]) => {
+      const isTiltMode = seriesResults[0]?.line1Tilt !== undefined;
+      const isSaturationMode = seriesResults[0]?.line1Saturation !== undefined;
 
-    if (isTiltMode) {
-      header = 'Trial,Line 1 Length,Line 1 Tilt,Line 2 Length,Line 2 Tilt,Ground Truth,Your Response,Result,Response Time,Timestamp';
-      rows = results.map(r => {
-        const groundTruth = r.line1Length === r.line2Length ? 'same' : 'different';
-        const isCorrect = r.response === groundTruth ? 'Correct' : 'Incorrect';
-        return `${r.trialIndex},${r.line1Length},${r.line1Tilt},${r.line2Length},${r.line2Tilt},${groundTruth},${r.response},${isCorrect},${r.responseTime},${r.timestamp}`;
-      });
-    } else if (isSaturationMode) {
-      header = 'Trial,Line 1 Length,Line 1 Saturation,Line 2 Length,Line 2 Saturation,Ground Truth,Your Response,Result,Response Time,Timestamp';
-      rows = results.map(r => {
-        const groundTruth = r.line1Length === r.line2Length ? 'same' : 'different';
-        const isCorrect = r.response === groundTruth ? 'Correct' : 'Incorrect';
-        return `${r.trialIndex},${r.line1Length},${r.line1Saturation},${r.line2Length},${r.line2Saturation},${groundTruth},${r.response},${isCorrect},${r.responseTime},${r.timestamp}`;
-      });
-    } else {
-      header = 'Trial,Line 1 Length,Line 2 Length,Ground Truth,Your Response,Result,Response Time,Timestamp';
-      rows = results.map(r => {
-        const groundTruth = r.line1Length === r.line2Length ? 'same' : 'different';
-        const isCorrect = r.response === groundTruth ? 'Correct' : 'Incorrect';
-        return `${r.trialIndex},${r.line1Length},${r.line2Length},${groundTruth},${r.response},${isCorrect},${r.responseTime},${r.timestamp}`;
-      });
-    }
+      let header: string;
+      let rows: string[];
 
-    const csvContent = [header, ...rows].join('\n');
+      if (isTiltMode) {
+        header = 'Trial,Line 1 Length,Line 1 Tilt,Line 2 Length,Line 2 Tilt,Ground Truth,Your Response,Result,Response Time,Timestamp';
+        rows = seriesResults.map(r => {
+          const groundTruth = r.line1Length === r.line2Length ? 'same' : 'different';
+          const isCorrect = r.response === groundTruth ? 'Correct' : 'Incorrect';
+          return `${r.trialIndex},${r.line1Length},${r.line1Tilt},${r.line2Length},${r.line2Tilt},${groundTruth},${r.response},${isCorrect},${r.responseTime},${r.timestamp}`;
+        });
+      } else if (isSaturationMode) {
+        header = 'Trial,Line 1 Length,Line 1 Saturation,Line 2 Length,Line 2 Saturation,Ground Truth,Your Response,Result,Response Time,Timestamp';
+        rows = seriesResults.map(r => {
+          const groundTruth = r.line1Length === r.line2Length ? 'same' : 'different';
+          const isCorrect = r.response === groundTruth ? 'Correct' : 'Incorrect';
+          return `${r.trialIndex},${r.line1Length},${r.line1Saturation},${r.line2Length},${r.line2Saturation},${groundTruth},${r.response},${isCorrect},${r.responseTime},${r.timestamp}`;
+        });
+      } else {
+        header = 'Trial,Line 1 Length,Line 2 Length,Ground Truth,Your Response,Result,Response Time,Timestamp';
+        rows = seriesResults.map(r => {
+          const groundTruth = r.line1Length === r.line2Length ? 'same' : 'different';
+          const isCorrect = r.response === groundTruth ? 'Correct' : 'Incorrect';
+          return `${r.trialIndex},${r.line1Length},${r.line2Length},${groundTruth},${r.response},${isCorrect},${r.responseTime},${r.timestamp}`;
+        });
+      }
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
+      const csvContent = [header, ...rows].join('\n');
+      zip.file(`${seriesName}_results.csv`, csvContent);
+    });
+
+    // Generate the zip file and download it
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'experiment_results.csv';
+    a.download = 'experiment_results.zip';
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const currentTrials = isPracticeMode ? practiceTrials : trials;
+  const currentSeries = allSeries[currentSeriesIndex];
+  const currentTrials = isPracticeMode ? practiceTrials : (currentSeries?.trials || []);
   const currentTrial = currentTrials[currentTrialIndex];
 
   const columnHelper = createColumnHelper<ExperimentResult>();
@@ -251,28 +359,17 @@ export default function Home() {
                 📋 Experiment Information:
               </p>
               <ul className="list-disc list-inside text-base text-blue-900 space-y-2">
-                <li><strong>Practice:</strong> 4 trials (2 same, 2 different)</li>
-                <li><strong>Main Experiment:</strong> All trials from uploaded CSV</li>
+                <li><strong>4 Series:</strong> Series-1a, 1b (tilt), Series-2a, 2b (saturation)</li>
+                <li><strong>Practice:</strong> 4 trials before Series 1 and Series 2 (2 same, 2 different each)</li>
                 <li><strong>Display Time:</strong> Lines shown for 3 seconds, then hidden</li>
                 <li>You can respond even after lines disappear</li>
+                <li>Calibration is done once at the beginning</li>
               </ul>
             </div>
 
-            <div className="mb-6">
-              <label className="block text-base font-bold mb-2">
-                Upload CSV file with trial data:
-              </label>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                ref={fileInputRef}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              />
-            </div>
-            {trials.length > 0 && (
+            {allSeries.length > 0 && (
               <div className="mb-4">
-                <p className="text-green-600 font-bold text-lg">✓ Loaded {trials.length} trials</p>
+                <p className="text-green-600 font-bold text-lg">✓ Loaded {allSeries.length} series ({allSeries.reduce((sum, s) => sum + s.trials.length, 0)} total trials)</p>
               </div>
             )}
 
@@ -331,24 +428,34 @@ export default function Home() {
               </div>
             )}
 
+            <div className="mb-4 bg-green-50 border-2 border-green-400 rounded p-4">
+              <p className="text-lg font-bold text-green-900 mb-2">
+                ✅ Ready to Start
+              </p>
+              <p className="text-base text-green-900">
+                Click the button below to start with a <strong>practice session (4 trials)</strong> to familiarize yourself with the experiment. You will see <strong>black lines with different tilts</strong>.
+              </p>
+            </div>
+
             <div className="flex items-center gap-4">
               <button
                 onClick={() => {
-                  if (trials.length === 0) {
-                    alert('Please upload a CSV file first');
+                  if (allSeries.length === 0) {
+                    alert('Loading series data...');
                     return;
                   }
-                  setIsPracticeMode(true);
-                  startPracticeAfterCalibration();
+                  setIsCalibrated(true);
+                  setCurrentSeriesIndex(0);
+                  startPracticeForCurrentSeries();
                 }}
-                disabled={trials.length === 0}
+                disabled={allSeries.length === 0}
                 className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-bold text-lg"
               >
-                Start Practice
+                Start Practice Session
               </button>
-              {trials.length === 0 && (
-                <p className="text-red-600 font-bold text-base">
-                  ⬆️ Please upload a CSV file first
+              {allSeries.length === 0 && (
+                <p className="text-orange-600 font-bold text-base">
+                  ⏳ Loading series data...
                 </p>
               )}
             </div>
@@ -359,6 +466,7 @@ export default function Home() {
           <div className="bg-white p-6 rounded-lg shadow-md">
             <div className="mb-4">
               <p className="text-2xl font-bold">
+                {currentSeries && !isPracticeMode && `${currentSeries.name} - `}
                 {isPracticeMode ? 'Practice ' : ''}Trial {currentTrialIndex + 1} of {currentTrials.length}
               </p>
             </div>
@@ -413,8 +521,20 @@ export default function Home() {
             <h2 className="text-3xl font-bold mb-4 text-center">Practice Completed!</h2>
             <p className="text-xl font-bold mb-6 text-center">You completed {results.length} practice trials.</p>
 
+            <div className="mb-6 bg-blue-50 border-2 border-blue-400 rounded p-4">
+              <p className="text-lg font-bold text-blue-900 mb-2">
+                📝 What's Next
+              </p>
+              <p className="text-base text-blue-900">
+                You will now start <strong>{currentSeries?.name}</strong>.
+                {currentSeriesIndex === 0 ? ' You will continue seeing black lines with different tilts.' : ' You will now see red lines with different saturations.'}
+                <br/>
+                The experiment works the same way as practice, but your responses will be recorded.
+              </p>
+            </div>
+
             <div className="mb-6">
-              <h3 className="text-2xl font-bold mb-3">Results Summary</h3>
+              <h3 className="text-2xl font-bold mb-3">Practice Results Summary</h3>
               <div className="overflow-auto max-h-96 border rounded">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50 sticky top-0">
@@ -466,27 +586,79 @@ export default function Home() {
             <div className="text-center space-x-4">
               <button
                 onClick={() => {
-                  if (trials.length === 0) {
-                    alert('Please upload a CSV file first');
-                    return;
-                  }
-                  setIsPracticeMode(false);
-                  startExperimentAfterCalibration();
+                  startExperimentForCurrentSeries();
                 }}
                 className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 text-xl font-bold"
               >
-                Start Main Experiment
+                Continue to {currentSeries?.name}
               </button>
+            </div>
+          </div>
+        )}
+
+        {experimentState === 'series-completed' && showSeriesTransition && (
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h2 className="text-3xl font-bold mb-4 text-center">{currentSeries?.name} Completed! ✅</h2>
+            <p className="text-xl font-bold mb-6 text-center">
+              Great work! You completed {results.length} trials.
+            </p>
+
+            {currentSeriesIndex === 0 && (
+              <div className="mb-6 bg-green-50 border-2 border-green-400 rounded p-4">
+                <p className="text-lg font-bold text-green-900 mb-2">
+                  📝 Next: {allSeries[currentSeriesIndex + 1]?.name}
+                </p>
+                <p className="text-base text-green-900">
+                  You will continue with more trials using <strong>black lines with different tilts</strong>.
+                  The format is exactly the same.
+                </p>
+              </div>
+            )}
+
+            {currentSeriesIndex === 1 && (
+              <div className="mb-6 bg-purple-50 border-2 border-purple-400 rounded p-4">
+                <p className="text-lg font-bold text-purple-900 mb-2">
+                  🎨 Important: New Type of Experiment!
+                </p>
+                <p className="text-base text-purple-900 mb-3">
+                  You have completed the tilt-based experiments. Now you'll start a <strong>different type of experiment</strong>.
+                </p>
+                <p className="text-base text-purple-900 mb-2">
+                  <strong>What's changing:</strong>
+                </p>
+                <ul className="list-disc list-inside text-base text-purple-900 space-y-1 ml-4">
+                  <li>Lines will be <strong>horizontal (no tilt)</strong></li>
+                  <li>Lines will be <strong>red with varying saturations</strong></li>
+                  <li>You'll still compare line lengths the same way</li>
+                </ul>
+                <p className="text-base text-purple-900 mt-3">
+                  You will start with a <strong>practice session (4 trials)</strong> to get familiar with this new format.
+                </p>
+              </div>
+            )}
+
+            {currentSeriesIndex === 2 && (
+              <div className="mb-6 bg-green-50 border-2 border-green-400 rounded p-4">
+                <p className="text-lg font-bold text-green-900 mb-2">
+                  📝 Next: {allSeries[currentSeriesIndex + 1]?.name} (Final Series)
+                </p>
+                <p className="text-base text-green-900">
+                  You will continue with more trials using <strong>red lines with different saturations</strong>.
+                  This is the final series!
+                </p>
+              </div>
+            )}
+
+            <div className="text-center">
               <button
                 onClick={() => {
-                  setExperimentState('setup');
-                  setCurrentTrialIndex(0);
-                  setResults([]);
-                  setIsPracticeMode(false);
+                  setShowSeriesTransition(false);
+                  setCurrentSeriesIndex(prev => prev + 1);
+                  setShouldStartNextSeries(true);
                 }}
-                className="bg-gray-600 text-white px-8 py-3 rounded-lg hover:bg-gray-700 text-xl font-bold"
+                className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 text-xl font-bold"
               >
-                Back to Setup
+                {currentSeriesIndex === 1 ? 'Start Practice (Saturation)' : `Continue to ${allSeries[currentSeriesIndex + 1]?.name}`}
               </button>
             </div>
           </div>
@@ -494,71 +666,86 @@ export default function Home() {
 
         {experimentState === 'completed' && (
           <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-3xl font-bold mb-4 text-center">Experiment Completed!</h2>
-            <p className="text-xl font-bold mb-6 text-center">You completed {results.length} trials.</p>
+            <h2 className="text-3xl font-bold mb-4 text-center">All Experiments Completed!</h2>
+            <p className="text-xl font-bold mb-6 text-center">
+              You completed all {Object.keys(allSeriesResults).length} series with {Object.values(allSeriesResults).reduce((sum, r) => sum + r.length, 0)} total trials.
+            </p>
 
             <div className="mb-6">
-              <h3 className="text-2xl font-bold mb-3">Results Summary</h3>
-              <div className="overflow-auto max-h-96 border rounded">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 sticky top-0">
-                    {table.getHeaderGroups().map(headerGroup => (
-                      <tr key={headerGroup.id}>
-                        {headerGroup.headers.map(header => (
-                          <th
-                            key={header.id}
-                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                          >
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext()
-                                )}
-                          </th>
-                        ))}
-                      </tr>
-                    ))}
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {table.getRowModel().rows.map(row => {
-                      const groundTruth = row.original.line1Length === row.original.line2Length ? 'same' : 'different';
-                      const isCorrect = row.original.response === groundTruth;
-                      return (
-                        <tr key={row.id} className={isCorrect ? 'bg-green-50' : 'bg-red-50'}>
-                          {row.getVisibleCells().map(cell => (
-                            <td key={cell.id} className="px-6 py-4 whitespace-nowrap text-sm">
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <h3 className="text-2xl font-bold mb-3">Summary by Series</h3>
+              <div className="space-y-4">
+                {Object.entries(allSeriesResults).map(([seriesName, seriesResults]) => {
+                  const correctCount = seriesResults.filter(r => r.response === (r.line1Length === r.line2Length ? 'same' : 'different')).length;
+                  const accuracy = Math.round((correctCount / seriesResults.length) * 100);
+                  const avgResponseTime = Math.round(seriesResults.reduce((sum, r) => sum + r.responseTime, 0) / seriesResults.length);
+
+                  return (
+                    <div key={seriesName} className="p-4 bg-gray-50 rounded border-l-4 border-blue-500">
+                      <h4 className="text-xl font-bold mb-2">{seriesName}</h4>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-600">Trials</p>
+                          <p className="text-lg font-bold">{seriesResults.length}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Accuracy</p>
+                          <p className="text-lg font-bold">{accuracy}%</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Avg Response Time</p>
+                          <p className="text-lg font-bold">{avgResponseTime}ms</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="mt-4 p-4 bg-blue-50 rounded">
-                <p className="text-2xl font-bold">
-                  Accuracy: {Math.round((results.filter(r => r.response === (r.line1Length === r.line2Length ? 'same' : 'different')).length / results.length) * 100)}%
-                </p>
-                <p className="text-lg font-bold text-gray-700 mt-2">
-                  Average Response Time: {Math.round(results.reduce((sum, r) => sum + r.responseTime, 0) / results.length)}ms
-                </p>
+
+              <div className="mt-6 p-4 bg-green-50 rounded border-2 border-green-500">
+                <h4 className="text-xl font-bold mb-2">Overall Statistics</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Total Trials</p>
+                    <p className="text-2xl font-bold">
+                      {Object.values(allSeriesResults).reduce((sum, r) => sum + r.length, 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Overall Accuracy</p>
+                    <p className="text-2xl font-bold">
+                      {Math.round(
+                        (Object.values(allSeriesResults).flat().filter(r => r.response === (r.line1Length === r.line2Length ? 'same' : 'different')).length /
+                         Object.values(allSeriesResults).flat().length) * 100
+                      )}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Overall Avg Response Time</p>
+                    <p className="text-2xl font-bold">
+                      {Math.round(
+                        Object.values(allSeriesResults).flat().reduce((sum, r) => sum + r.responseTime, 0) /
+                        Object.values(allSeriesResults).flat().length
+                      )}ms
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div className="text-center space-x-4">
               <button
-                onClick={downloadResults}
+                onClick={downloadAllResults}
                 className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 text-xl font-bold"
               >
-                Download Results (CSV)
+                Download Results (ZIP)
               </button>
               <button
                 onClick={() => {
                   setExperimentState('setup');
+                  setCurrentSeriesIndex(0);
                   setCurrentTrialIndex(0);
                   setResults([]);
+                  setAllSeriesResults({});
                 }}
                 className="bg-gray-600 text-white px-8 py-3 rounded-lg hover:bg-gray-700 text-xl font-bold"
               >

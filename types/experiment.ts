@@ -20,4 +20,4 @@ export interface ExperimentResult {
   timestamp: string;
 }
 
-export type ExperimentState = 'setup' | 'calibration' | 'running' | 'practice-completed' | 'completed';
+export type ExperimentState = 'setup' | 'calibration' | 'running' | 'practice-completed' | 'series-completed' | 'completed';
