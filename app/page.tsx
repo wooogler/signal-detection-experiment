@@ -255,6 +255,22 @@ export default function Home() {
     }
   };
 
+  // Keyboard event handler for F and J keys
+  useEffect(() => {
+    if (experimentState !== 'running') return;
+
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.key === 'f' || event.key === 'F') {
+        handleResponse('same');
+      } else if (event.key === 'j' || event.key === 'J') {
+        handleResponse('different');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [experimentState, handleResponse]);
+
   const downloadAllResults = async () => {
     const zip = new JSZip();
 
@@ -551,13 +567,13 @@ export default function Home() {
                   onClick={() => handleResponse('same')}
                   className="bg-green-600 text-white px-12 py-4 rounded-lg hover:bg-green-700 text-2xl font-bold"
                 >
-                  Same
+                  Same <span className="text-sm">(F)</span>
                 </button>
                 <button
                   onClick={() => handleResponse('different')}
                   className="bg-red-600 text-white px-12 py-4 rounded-lg hover:bg-red-700 text-2xl font-bold"
                 >
-                  Different
+                  Different <span className="text-sm">(J)</span>
                 </button>
               </div>
             </div>
