@@ -382,13 +382,12 @@ export default function Home() {
 
             {!counterbalanceGroup && (
               <div className="mb-6 border-2 border-purple-400 bg-purple-50 rounded p-4">
-                <h3 className="text-xl font-bold mb-3 text-purple-900">Select Counterbalance Group</h3>
+                <h3 className="text-xl font-bold mb-3 text-purple-900">Select Your Group</h3>
                 <p className="text-base text-purple-900 mb-4">
                   Choose your assigned group (A, B, C, or D):
                 </p>
-                <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-2 gap-3">
                   {(['A', 'B', 'C', 'D'] as CounterbalanceGroup[]).map((group) => {
-                    const order = getSeriesOrder(group);
                     return (
                       <button
                         key={group}
@@ -400,15 +399,6 @@ export default function Home() {
                     );
                   })}
                 </div>
-                <div className="mt-4 p-3 bg-white rounded border border-purple-300">
-                  <p className="text-sm font-bold text-purple-900 mb-2">Group Orders:</p>
-                  <ul className="text-xs text-purple-800 space-y-1">
-                    <li><strong>Group A:</strong> 1a → 1b → 2a → 2b</li>
-                    <li><strong>Group B:</strong> 1a → 1b → 2b → 2a</li>
-                    <li><strong>Group C:</strong> 1b → 1a → 2a → 2b</li>
-                    <li><strong>Group D:</strong> 1b → 1a → 2b → 2a</li>
-                  </ul>
-                </div>
               </div>
             )}
 
@@ -419,9 +409,6 @@ export default function Home() {
                 </p>
                 <p className="text-green-600 font-bold text-lg">
                   ✓ Loaded {allSeries.length} series ({allSeries.reduce((sum, s) => sum + s.trials.length, 0)} total trials)
-                </p>
-                <p className="text-gray-600 text-sm mt-1">
-                  Order: {allSeries.map(s => s.name).join(' → ')}
                 </p>
               </div>
             )}
