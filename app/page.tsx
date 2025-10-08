@@ -12,6 +12,8 @@ type SeriesData = {
   trials: TrialData[];
 };
 
+type CounterbalanceGroup = 'A' | 'B' | 'C' | 'D';
+
 export default function Home() {
   const [experimentState, setExperimentState] = useState<ExperimentState>('setup');
   const [allSeries, setAllSeries] = useState<SeriesData[]>([]);
@@ -25,6 +27,7 @@ export default function Home() {
   const [practiceTrials, setPracticeTrials] = useState<TrialData[]>([]);
   const [isMounted, setIsMounted] = useState(false);
   const [showSeriesTransition, setShowSeriesTransition] = useState(false);
+  const [counterbalanceGroup, setCounterbalanceGroup] = useState<CounterbalanceGroup | null>(null);
   const [pixelsPerInch, setPixelsPerInch] = useLocalStorageState<number>('pixelsPerInch', {
     defaultValue: 96
   });
@@ -37,10 +40,23 @@ export default function Home() {
     setIsMounted(true);
   }, []);
 
+  // Get series order based on counterbalance group
+  const getSeriesOrder = (group: CounterbalanceGroup): string[] => {
+    const orders = {
+      'A': ['Series-1a', 'Series-1b', 'Series-2a', 'Series-2b'],
+      'B': ['Series-1a', 'Series-1b', 'Series-2b', 'Series-2a'],
+      'C': ['Series-1b', 'Series-1a', 'Series-2a', 'Series-2b'],
+      'D': ['Series-1b', 'Series-1a', 'Series-2b', 'Series-2a'],
+    };
+    return orders[group];
+  };
+
   // Load all series data from CSV files
   useEffect(() => {
+    if (!counterbalanceGroup) return;
+
     const loadAllSeries = async () => {
-      const seriesFiles = ['Series-1a', 'Series-1b', 'Series-2a', 'Series-2b'];
+      const seriesFiles = getSeriesOrder(counterbalanceGroup);
       const loadedSeries: SeriesData[] = [];
 
       for (const fileName of seriesFiles) {
@@ -75,7 +91,7 @@ export default function Home() {
     };
 
     loadAllSeries();
-  }, []);
+  }, [counterbalanceGroup]);
 
   const [shouldStartNextSeries, setShouldStartNextSeries] = useState(false);
 
@@ -364,9 +380,49 @@ export default function Home() {
               </ul>
             </div>
 
-            {allSeries.length > 0 && (
+            {!counterbalanceGroup && (
+              <div className="mb-6 border-2 border-purple-400 bg-purple-50 rounded p-4">
+                <h3 className="text-xl font-bold mb-3 text-purple-900">Select Counterbalance Group</h3>
+                <p className="text-base text-purple-900 mb-4">
+                  Choose your assigned group (A, B, C, or D):
+                </p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  {(['A', 'B', 'C', 'D'] as CounterbalanceGroup[]).map((group) => {
+                    const order = getSeriesOrder(group);
+                    return (
+                      <button
+                        key={group}
+                        onClick={() => setCounterbalanceGroup(group)}
+                        className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 font-bold text-lg"
+                      >
+                        Group {group}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 p-3 bg-white rounded border border-purple-300">
+                  <p className="text-sm font-bold text-purple-900 mb-2">Group Orders:</p>
+                  <ul className="text-xs text-purple-800 space-y-1">
+                    <li><strong>Group A:</strong> 1a → 1b → 2a → 2b</li>
+                    <li><strong>Group B:</strong> 1a → 1b → 2b → 2a</li>
+                    <li><strong>Group C:</strong> 1b → 1a → 2a → 2b</li>
+                    <li><strong>Group D:</strong> 1b → 1a → 2b → 2a</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {counterbalanceGroup && allSeries.length > 0 && (
               <div className="mb-4">
-                <p className="text-green-600 font-bold text-lg">✓ Loaded {allSeries.length} series ({allSeries.reduce((sum, s) => sum + s.trials.length, 0)} total trials)</p>
+                <p className="text-green-600 font-bold text-lg">
+                  ✓ Group {counterbalanceGroup} selected
+                </p>
+                <p className="text-green-600 font-bold text-lg">
+                  ✓ Loaded {allSeries.length} series ({allSeries.reduce((sum, s) => sum + s.trials.length, 0)} total trials)
+                </p>
+                <p className="text-gray-600 text-sm mt-1">
+                  Order: {allSeries.map(s => s.name).join(' → ')}
+                </p>
               </div>
             )}
 
@@ -437,6 +493,10 @@ export default function Home() {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => {
+                  if (!counterbalanceGroup) {
+                    alert('Please select a counterbalance group first.');
+                    return;
+                  }
                   if (allSeries.length === 0) {
                     alert('Loading series data...');
                     return;
@@ -444,12 +504,17 @@ export default function Home() {
                   setCurrentSeriesIndex(0);
                   startPracticeForCurrentSeries();
                 }}
-                disabled={allSeries.length === 0}
+                disabled={!counterbalanceGroup || allSeries.length === 0}
                 className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-bold text-lg"
               >
                 Start Practice Session
               </button>
-              {allSeries.length === 0 && (
+              {!counterbalanceGroup && (
+                <p className="text-orange-600 font-bold text-base">
+                  ⏳ Select a counterbalance group first
+                </p>
+              )}
+              {counterbalanceGroup && allSeries.length === 0 && (
                 <p className="text-orange-600 font-bold text-base">
                   ⏳ Loading series data...
                 </p>
